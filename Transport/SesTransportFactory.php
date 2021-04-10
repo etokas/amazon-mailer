@@ -11,6 +11,8 @@
 
 namespace Symfony\Component\Mailer\Bridge\Amazon\Transport;
 
+use AsyncAws\Core\Configuration;
+use AsyncAws\Ses\SesClient;
 use Symfony\Component\Mailer\Exception\UnsupportedSchemeException;
 use Symfony\Component\Mailer\Transport\AbstractTransportFactory;
 use Symfony\Component\Mailer\Transport\Dsn;
@@ -31,7 +33,19 @@ final class SesTransportFactory extends AbstractTransportFactory
         $port = $dsn->getPort();
 
         if ('ses+api' === $scheme) {
-            return (new SesApiTransport($user, $password, $region, $this->client, $this->dispatcher, $this->logger))->setHost($host)->setPort($port);
+            if (class_exists(SesClient::class)) {
+                $options = [
+                        'region' => $dsn->getOption('region') ?: 'eu-west-1',
+                        'accessKeyId' => $dsn->getUser(),
+                        'accessKeySecret' => $dsn->getPassword(),
+                    ] + (
+                    'default' === $dsn->getHost() ? [] : ['endpoint' => 'https://'.$dsn->getHost().($dsn->getPort() ? ':'.$dsn->getPort() : '')]
+                    );
+                return new SesApiAsyncAwsTransport(new SesClient(Configuration::create($options), null, $this->client, $this->logger), $this->dispatcher, $this->logger);
+
+            } else {
+                return (new SesApiTransport($user, $password, $region, $this->client, $this->dispatcher, $this->logger))->setHost($host)->setPort($port);
+            }
         }
 
         if ('ses+https' === $scheme || 'ses' === $scheme) {
